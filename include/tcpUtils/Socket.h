@@ -1,5 +1,5 @@
 #pragma once
-#include <stdexcept>
+#include <tcpUtils/NetworkException.h>
 #include <string>
 #include <cstdint>
 
@@ -29,22 +29,13 @@ namespace tcp
 		impl::SocketImpl* implementation = nullptr;
 	};
 
-	class SocketException : public std::exception
+	class SocketException : public NetworkException
 	{
 	public:
-
 		SocketException(std::string message)
-			: error(message)
+			: NetworkException(message)
 		{
 
 		}
-
-		const char* what() const noexcept override
-		{
-			return error.c_str();
-		}
-
-	private:
-		std::string error;
 	};
 }

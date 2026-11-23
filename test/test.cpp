@@ -1,4 +1,4 @@
-#include <tcpUtils/Socket.h>
+#include <tcpUtils/Http.h>
 #include <print>
 
 using namespace tcp;
@@ -7,15 +7,13 @@ int main()
 {
 	try
 	{
-		Socket s = Socket("www.google.com", 443, SocketOptions{ .useTls = true });
+		HttpRequest s = HttpRequest("www.google.com", "/", "GET");
 
-		std::string message = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n";
-		char received[8192];
+		s.protocol = HttpProtocol::https;
 
-		s.Send(message.data(), message.size());
+		HttpResponse response = HttpResponse::FromRequest(&s);
 
-		size_t count = s.Receive(received, sizeof(received));
-		std::println("{}", std::string(received, count));
+		std::println("{}", response.GetBodyString());
 	}
 	catch (SocketException& e)
 	{
