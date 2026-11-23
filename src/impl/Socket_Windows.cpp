@@ -8,13 +8,13 @@
 #include <assert.h>
 #include <format>
 #include <vector>
-#include "Socket_Unix.h"
+#include "StringUtil.h"
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment (lib, "secur32.lib")
 #pragma comment (lib, "shlwapi.lib")
 
-static std::wstring strToWstr(const std::string& str)
+static std::wstring StrToWstr(const std::string& str)
 {
 	int WideLength = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, NULL, 0);
 	wchar_t* WideString = new wchar_t[WideLength + 1];
@@ -25,7 +25,7 @@ static std::wstring strToWstr(const std::string& str)
 	return OutStr;
 }
 
-static std::string wstrToStr(const std::wstring& wstr)
+static std::string WstrToStr(const std::wstring& wstr)
 {
 	int ResultLength = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), int(wstr.size()), nullptr, 0, 0, 0);
 	char* ToBuffer = new char[ResultLength];
@@ -35,7 +35,7 @@ static std::string wstrToStr(const std::wstring& wstr)
 	return Result;
 }
 
-static std::string getErrorString(DWORD ErrorMessageID)
+static std::string GetErrorString(DWORD ErrorMessageID)
 {
 	if (ErrorMessageID == 0)
 	{
@@ -52,13 +52,13 @@ static std::string getErrorString(DWORD ErrorMessageID)
 
 	LocalFree(MessageBuffer);
 
-	return wstrToStr(Message);
+	return tcp::util::Trim(WstrToStr(Message));
 }
 
 
-static std::string getLastErrorString()
+static std::string GetLastErrorString()
 {
-	return getErrorString(GetLastError());
+	return GetErrorString(GetLastError());
 }
 
 tcp::impl::SocketImpl::SocketImpl()
@@ -83,10 +83,10 @@ void tcp::impl::SocketImpl::Connect(std::string host, uint16_t port, SocketOptio
 		reinterpret_cast<char*>(&ipv6OnlyValue), sizeof(ipv6OnlyValue));
 
 	// Connect to server
-	if (!WSAConnectByNameW(connectionSocket, strToWstr(host).data(), std::to_wstring(port).data(),
+	if (!WSAConnectByNameW(connectionSocket, StrToWstr(host).data(), std::to_wstring(port).data(),
 		NULL, NULL, NULL, NULL, NULL, NULL))
 	{
-		throw SocketException(getErrorString(WSAGetLastError()));
+		throw SocketException(GetErrorString(WSAGetLastError()));
 	}
 
 	if (options.useTls)
@@ -135,7 +135,7 @@ size_t tcp::impl::SocketImpl::Receive(void* toData, size_t dataLength)
 
 	if (read == SOCKET_ERROR)
 	{
-		throw SocketException(getErrorString(WSAGetLastError()));
+		throw SocketException(GetErrorString(WSAGetLastError()));
 	}
 	return size_t(read);
 }
@@ -264,7 +264,7 @@ void tcp::impl::SocketImpl::InitializeTls(std::string host)
 			case SEC_E_ILLEGAL_MESSAGE:
 				throw SocketException("cannot negotiate crypto algorithms");
 			default:
-				throw SocketException("Unknown connection error");
+				throw SocketException("TLS error: " + GetErrorString(sec));
 			}
 		}
 
@@ -281,7 +281,7 @@ void tcp::impl::SocketImpl::InitializeTls(std::string host)
 		}
 		else if (r < 0)
 		{
-			throw SocketException(getErrorString(WSAGetLastError()));
+			throw SocketException(GetErrorString(WSAGetLastError()));
 		}
 		received += r;
 	}
@@ -316,7 +316,7 @@ void tcp::impl::SocketImpl::SendTls(const void* data, size_t dataLength)
 		if (sec != SEC_E_OK)
 		{
 			// This should not happen, but just in case check it
-			throw SocketException(getErrorString(WSAGetLastError()));
+			throw SocketException(GetErrorString(WSAGetLastError()));
 		}
 
 		int total = buffers[0].cbBuffer + buffers[1].cbBuffer + buffers[2].cbBuffer;
@@ -328,7 +328,7 @@ void tcp::impl::SocketImpl::SendTls(const void* data, size_t dataLength)
 			{
 				// error sending data to socket, or server disconnected
 				delete writeBuffer;
-				throw SocketException(getErrorString(WSAGetLastError()));
+				throw SocketException(GetErrorString(WSAGetLastError()));
 			}
 			sent += d;
 		}
@@ -438,7 +438,7 @@ size_t tcp::impl::SocketImpl::ReceiveTls(void* data, size_t dataLength)
 		else if (r < 0)
 		{
 			int errorCode = WSAGetLastError();
-			throw SocketException(getErrorString(WSAGetLastError()));
+			throw SocketException(GetErrorString(WSAGetLastError()));
 		}
 		received += r;
 	}

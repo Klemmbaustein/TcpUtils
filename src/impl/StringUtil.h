@@ -10,11 +10,11 @@ namespace tcp::util
 	* Returns the given string where all characters have been converted to lower case.
 	*/
 	[[nodiscard]]
-	std::string Lower(std::string Input)
+	inline std::string Lower(std::string input)
 	{
-		std::transform(Input.begin(), Input.end(), Input.begin(),
+		std::transform(input.begin(), input.end(), input.begin(),
 			[](unsigned char c) { return std::tolower(c); });
-		return Input;
+		return input;
 	}
 
 	/**
@@ -22,15 +22,15 @@ namespace tcp::util
 	* Removes whitespace from the start and end of the string.
 	*/
 	[[nodiscard]]
-	std::string Trim(std::string Input)
+	inline std::string Trim(std::string input)
 	{
-		Input.erase(Input.begin(), std::find_if(Input.begin(), Input.end(), [](unsigned char ch) {
+		input.erase(input.begin(), std::find_if(input.begin(), input.end(), [](unsigned char ch) {
 			return !std::isspace(ch) && ch != '\r';
 		}));
 
-		Input.erase(std::find_if(Input.rbegin(), Input.rend(), [](unsigned char ch) {
+		input.erase(std::find_if(input.rbegin(), input.rend(), [](unsigned char ch) {
 			return !std::isspace(ch) && ch != '\r';
-		}).base(), Input.end());
-		return Input;
+		}).base(), input.end());
+		return input;
 	}
 }

@@ -16,10 +16,16 @@ tcp::impl::SocketImpl::~SocketImpl()
 {
 	if (useTls)
 	{
-		BIO_free_all(sslBasicIO);
-		SSL_CTX_free(sslContext);
+		if (sslBasicIO)
+		{
+			BIO_free_all(sslBasicIO);
+		}
+		if (sslContext)
+		{
+			SSL_CTX_free(sslContext);
+		}
 	}
-	else
+	else if (socketFd)
 	{
 		close(socketFd);
 	}

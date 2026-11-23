@@ -1,31 +1,61 @@
 #include <tcpUtils/Http.h>
-#include "StringUtil.h"
+#include "impl/StringUtil.h"
 #include <format>
 #include <cstring>
 
 using namespace tcp;
 
-tcp::HttpRequest::HttpRequest(std::string url, std::string path, std::string method)
+tcp::HttpRequest::HttpRequest(Url url, std::string method)
 {
 	this->url = url;
 	this->method = method;
-	this->path = path.empty() ? "/" : path;
 }
 
 HttpResponse tcp::HttpRequest::Run()
 {
-	uint16_t requestPort;
+	HttpProtocol initialProtocol = this->protocol;
 
-	if (port)
+	switch (this->protocol)
 	{
-		requestPort = *port;
-	}
-	else
-	{
-		requestPort = this->protocol == HttpProtocol::http ? 80 : 443;
+	case HttpProtocol::fromUrlPreferHttps:
+	case HttpProtocol::fromUrlPreferHttp:
+		if (url.scheme.has_value())
+		{
+			if (*url.scheme == Url::SCHEME_WEBSOCKET || *url.scheme == Url::SCHEME_HTTP)
+			{
+				this->protocol = HttpProtocol::http;
+				break;
+			}
+			else if (*url.scheme == Url::SCHEME_SECURE_WEBSOCKET || *url.scheme == Url::SCHEME_HTTPS)
+			{
+				this->protocol = HttpProtocol::https;
+				break;
+			}
+			// Fall through if it matches none.
+		}
+		if (this->protocol == HttpProtocol::fromUrlPreferHttp)
+		{
+			this->protocol = HttpProtocol::http;
+		}
+		if (this->protocol == HttpProtocol::fromUrlPreferHttps)
+		{
+			this->protocol = HttpProtocol::https;
+		}
+		break;
+	default:
+		break;
 	}
 
-	httpSocket = new Socket(this->url, requestPort, SocketOptions{
+	if (this->protocol != HttpProtocol::http && this->protocol != HttpProtocol::https)
+	{
+		throw HttpException("Failed to convert HTTP scheme value");
+	}
+
+	// this->protocol may only have two values here because of the previous condition, so just select one
+	// using the ternary operation.
+	uint16_t port = url.port.has_value() ? *url.port : (this->protocol == HttpProtocol::https ? 443 : 80);
+
+	httpSocket = new Socket(this->url.hostName, port, SocketOptions{
 		.useTls = this->protocol == HttpProtocol::https,
 	});
 
@@ -33,6 +63,20 @@ HttpResponse tcp::HttpRequest::Run()
 		part.append("\r\n");
 		httpSocket->Send(reinterpret_cast<uint8_t*>(part.data()), part.size());
 	};
+
+	std::string requestOrigin;
+
+	if (url.scheme)
+	{
+		requestOrigin += *url.scheme;
+	}
+	requestOrigin += url.hostName;
+	if (url.port)
+	{
+		requestOrigin += ":" + std::to_string(*url.port);
+	}
+
+	headers.insert({ "Origin", requestOrigin });
 
 	if (sendBytesFunction && bodySize)
 	{
@@ -47,9 +91,9 @@ HttpResponse tcp::HttpRequest::Run()
 		this->headers.insert({ "Content-Length", "0" });
 	}
 
-	this->headers.insert({ "Host", url });
+	this->headers.insert({ "Host", url.hostName });
 
-	sendHeaderPart(std::format("{} {} HTTP/1.1", method, path));
+	sendHeaderPart(std::format("{} {} HTTP/1.1", method, url.path));
 
 	for (auto& i : this->headers)
 	{
@@ -92,6 +136,48 @@ HttpResponse tcp::HttpRequest::Run()
 	{
 		delete httpSocket;
 		httpSocket = nullptr;
+	}
+
+	if (followRedirects && allowedRedirects && (response.statusCode == 301 || response.statusCode == 308))
+	{
+		if (allowedRedirects == 0)
+		{
+			throw HttpException("Too many redirects");
+		}
+		// Don't let a server infinitely redirect the client around.
+		allowedRedirects--;
+
+		auto newLocation = response.headers.find("location");
+
+		if (newLocation != response.headers.end())
+		{
+			auto initialPort = this->url.port;
+			this->url = Url(newLocation->second);
+			this->protocol = initialProtocol;
+
+			// This is a bit weird but seems to match what browsers do.
+			if (!this->url.port.has_value())
+			{
+				this->url.port = initialPort;
+			}
+
+			if (this->protocol == HttpProtocol::http
+				&& this->url.scheme != Url::SCHEME_HTTP && this->url.scheme != Url::SCHEME_WEBSOCKET)
+			{
+				throw HttpException("Redirect to another URL that does not match the original scheme of HTTP");
+			}
+			if (this->protocol == HttpProtocol::https
+				&& this->url.scheme != Url::SCHEME_HTTPS && this->url.scheme != Url::SCHEME_SECURE_WEBSOCKET)
+			{
+				throw HttpException("Redirect to another URL that does not match the original scheme of HTTPS");
+			}
+
+			return Run();
+		}
+		else
+		{
+			throw HttpException("Received redirect response, but no location to redirect to");
+		}
 	}
 
 	return response;
@@ -244,7 +330,7 @@ void tcp::HttpResponse::ProcessInitialHeaders()
 {
 	try
 	{
-		auto contentSize = headers.find("content-size");
+		auto contentSize = headers.find("content-length");
 
 		if (contentSize != headers.end())
 		{
@@ -253,7 +339,7 @@ void tcp::HttpResponse::ProcessInitialHeaders()
 	}
 	catch (std::exception& e)
 	{
-		throw HttpException("Bad Content-Size value: " + std::string(e.what()));
+		throw HttpException("Bad Content-Length value: " + std::string(e.what()));
 	}
 
 	auto transferEncoding = headers.find("transfer-encoding");

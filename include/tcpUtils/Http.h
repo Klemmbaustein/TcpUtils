@@ -4,6 +4,7 @@
 #include <optional>
 #include <tcpUtils/Socket.h>
 #include <tcpUtils/NetworkException.h>
+#include <tcpUtils/Url.h>
 
 namespace tcp
 {
@@ -11,6 +12,8 @@ namespace tcp
 	{
 		http,
 		https,
+		fromUrlPreferHttp,
+		fromUrlPreferHttps,
 	};
 
 	class HttpRequest;
@@ -64,20 +67,20 @@ namespace tcp
 	class HttpRequest
 	{
 	public:
-		HttpRequest(std::string url, std::string path, std::string method);
+		HttpRequest(Url url, std::string method);
 
 		HttpResponse Run();
 
 		std::function<void(void*, size_t)> receiveBytesFunction;
 		std::function<const void* (size_t&)> sendBytesFunction;
 
+		uint32_t allowedRedirects = 10;
+		bool followRedirects = true;
 		bool keepAlive = false;
 		bool stopAfterHeaders = false;
-		std::string url;
-		std::string path;
 		std::string method;
-		HttpProtocol protocol = HttpProtocol::http;
-		std::optional<uint16_t> port;
+		Url url;
+		HttpProtocol protocol = HttpProtocol::fromUrlPreferHttp;
 		std::optional<size_t> bodySize;
 		Socket* httpSocket = nullptr;
 
