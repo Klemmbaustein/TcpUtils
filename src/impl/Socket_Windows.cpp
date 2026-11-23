@@ -78,8 +78,8 @@ void tcp::impl::SocketImpl::Connect(std::string host, uint16_t port, SocketOptio
 {
 	connectionSocket = socket(AF_INET6, SOCK_STREAM, 0);
 
-	DWORD ipv6OnlyValue = false;
-	setsockopt(connectionSocket, SOL_SOCKET, IPV6_V6ONLY,
+	DWORD ipv6OnlyValue = 0;
+	setsockopt(connectionSocket, IPPROTO_IPV6, IPV6_V6ONLY,
 		reinterpret_cast<char*>(&ipv6OnlyValue), sizeof(ipv6OnlyValue));
 
 	// Connect to server
