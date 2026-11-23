@@ -64,7 +64,6 @@ namespace tcp
 	class HttpRequest
 	{
 	public:
-
 		HttpRequest(std::string url, std::string path, std::string method);
 
 		HttpResponse Run();

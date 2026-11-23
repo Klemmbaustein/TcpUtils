@@ -1,6 +1,7 @@
 #include <tcpUtils/Http.h>
 #include "StringUtil.h"
 #include <format>
+#include <cstring>
 
 using namespace tcp;
 
@@ -208,7 +209,7 @@ void tcp::HttpResponse::ParseHeader()
 			}
 
 			size_t secondSpace = line.find_first_of(' ', firstSpace + 1);
-			this->statusCode = std::stoi(line.substr(firstSpace, secondSpace - firstSpace).data());
+			this->statusCode = std::stoi(std::string(line.substr(firstSpace, secondSpace - firstSpace)));
 			this->statusDescription = line.substr(secondSpace + 1);
 		}
 		catch (std::exception&)

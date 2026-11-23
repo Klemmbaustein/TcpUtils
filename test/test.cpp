@@ -15,7 +15,7 @@ int main()
 
 		std::println("{}", response.GetBodyString());
 	}
-	catch (SocketException& e)
+	catch (NetworkException& e)
 	{
 		std::println("{}", e.what());
 	}
