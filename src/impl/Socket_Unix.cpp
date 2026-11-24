@@ -88,7 +88,7 @@ void tcp::impl::SocketImpl::ConnectTls(std::string host, uint16_t port, SocketOp
 
 	if (!sslContext)
 	{
-		throw SocketException("Failed to create OpenSSL context.");
+		throw SocketException("Failed to create OpenSSL context");
 	}
 
 	sslBasicIO = BIO_new_ssl_connect(sslContext);
@@ -97,7 +97,7 @@ void tcp::impl::SocketImpl::ConnectTls(std::string host, uint16_t port, SocketOp
 	BIO_set_conn_hostname(sslBasicIO, (host + ":" + std::to_string(port)).c_str());
 	if (!BIO_do_handshake(sslBasicIO))
 	{
-		throw SocketException("SSL Handshake failed.");
+		throw SocketException("SSL Handshake failed");
 	}
 
 	int err = SSL_get_verify_result(ssl);
@@ -139,7 +139,7 @@ void tcp::impl::SocketImpl::Send(const void* data, size_t dataLength)
 	int errorCode = ::send(socketFd, reinterpret_cast<const char*>(data), int(dataLength), 0);
 	if (errorCode < 0)
 	{
-		throw SocketException(std::format("Send failed. {}", strerror(errno)));
+		throw SocketException(std::format("Send failed: {}", strerror(errno)));
 	}
 }
 

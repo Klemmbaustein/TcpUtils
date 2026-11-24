@@ -1,7 +1,7 @@
 #include <tcpUtils/Url.h>
 #include <vector>
 
-tcp::Url::Url(std::string fromString)
+tcp::Url::Url(std::string fromString) noexcept
 {
 	const std::vector<std::string> possibleSchemes = { SCHEME_HTTP, SCHEME_HTTPS,
 		SCHEME_WEBSOCKET, SCHEME_SECURE_WEBSOCKET };

@@ -1,7 +1,9 @@
 #include <tcpUtils/WebSocket.h>
 #include <tcpUtils/Base64.h>
+#include <random>
+#include <cstring>
 
-unsigned char reverse(unsigned char b)
+static unsigned char reverse(unsigned char b)
 {
 	b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
 	b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
@@ -9,11 +11,33 @@ unsigned char reverse(unsigned char b)
 	return b;
 }
 
-tcp::HttpWebSocket::HttpWebSocket(HttpRequest* withRequest, std::function<int32_t()> randomIntFunction)
+tcp::HttpWebSocket::HttpWebSocket(HttpRequest* withRequest, std::function<uint32_t()> randomIntFunction)
 {
 	std::string keyBinary;
-	// TODO: Definitely do not keep it like this
-	keyBinary.resize(16, 42);
+	keyBinary.resize(16, 0);
+
+	if (!randomIntFunction)
+	{
+		static std::random_device rd;
+		static std::mt19937 defaultRandomSource{ rd() };
+
+		randomIntFunction = [] -> uint32_t {
+			std::uniform_int_distribution<uint32_t> generator{ 0, UINT32_MAX };
+			return generator(defaultRandomSource);
+		};
+	}
+
+	this->randomIntFunction = randomIntFunction;
+
+	for (size_t i = 0; i < keyBinary.size(); i += sizeof(uint32_t))
+	{
+		auto result = randomIntFunction();
+
+		keyBinary[i] = result & 0xFF;
+		keyBinary[i + 1] = (result >> 8) & 0xFF;
+		keyBinary[i + 2] = (result >> 16) & 0xFF;
+		keyBinary[i + 3] = (result >> 24) & 0xFF;
+	}
 
 	withRequest->method = "GET";
 	withRequest->keepAlive = true;
@@ -32,11 +56,15 @@ tcp::HttpWebSocket::HttpWebSocket(HttpRequest* withRequest, std::function<int32_
 	{
 		throw WebSocketException("URL did not reply with a WebSocket handshake");
 	}
+	isConnectionActive = true;
 }
 
 tcp::HttpWebSocket::~HttpWebSocket()
 {
-	SendMessage(WebSocketOp::close, nullptr, 0);
+	if (!isConnectionActive || sentClose)
+	{
+		SendMessage(WebSocketOp::close, nullptr, 0);
+	}
 	delete connection;
 }
 
@@ -76,16 +104,19 @@ void tcp::HttpWebSocket::SendMessage(WebSocketOp op, void* data, size_t length)
 	}
 	else
 	{
-		throw WebSocketException("Message too long.");
+		throw WebSocketException("Message too long");
 	}
 
 	auto headerEnd = result.size();
 
 	result.resize(headerEnd + 4 + length);
 
-	int32_t maskKey = 0;
+	uint32_t maskKey = 0;
 	memcpy(result.data() + headerEnd, &maskKey, sizeof(maskKey));
-	memcpy(result.data() + headerEnd + 4, data, length);
+	if (length)
+	{
+		memcpy(result.data() + headerEnd + 4, data, length);
+	}
 	auto bytes = result.data();
 
 	connection->Send(bytes, result.size());
@@ -93,9 +124,29 @@ void tcp::HttpWebSocket::SendMessage(WebSocketOp op, void* data, size_t length)
 
 void tcp::HttpWebSocket::ReadConnection()
 {
-	uint8_t headerBytes[2];
+	uint8_t headerBytes[2]{ 0 };
 
-	connection->Receive(headerBytes, sizeof(headerBytes));
+	if (!connection->Receive(headerBytes, sizeof(headerBytes)))
+	{
+		throw WebSocketException("Connection closed without a closing handshake");
+	}
+	WebSocketMessage message;
+	message.operation = WebSocketOp(headerBytes[0] & 0x0F);
+
+	bool isClose = false;
+
+	switch (message.operation)
+	{
+	case WebSocketOp::continueLast:
+	case WebSocketOp::sendText:
+	case WebSocketOp::sendBinary:
+		break;
+	case WebSocketOp::close:
+		isClose = true;
+		break;
+	default:
+		throw WebSocketException("Unknown Websocket message type");
+	}
 
 	uint8_t sizeAndHasMask = headerBytes[1];
 
@@ -128,13 +179,68 @@ void tcp::HttpWebSocket::ReadConnection()
 	std::string result;
 	result.resize(totalSize);
 	connection->Receive(result.data(), result.size());
-	WebSocketMessage message;
 	message.payload = result.data();
 	message.payloadLength = result.size();
-	message.operation = WebSocketOp(headerBytes[0] & 0x0F);
-	receiveMessage(message);
+
+	if (!isClose)
+	{
+		if (receiveMessage)
+		{
+			receiveMessage(message);
+		}
+	}
+	else
+	{
+		if (sentClose)
+		{
+			isConnectionActive = false;
+			return;
+		}
+
+		WebSocketCloseMessage closeMessage;
+		if (message.payloadLength < 2)
+		{
+			closeMessage.payload = nullptr;
+			closeMessage.payloadLength = 0;
+			closeMessage.closeReason = WebSocketCloseReason::undefined;
+		}
+		else if (message.payloadLength >= 2)
+		{
+			closeMessage.payload = nullptr;
+			closeMessage.payloadLength = 0;
+			memcpy(&closeMessage.closeReason, result.data(), sizeof(closeMessage.closeReason));
+			closeMessage.closeReason = WebSocketCloseReason(uint16_t(closeMessage.closeReason) >> 8
+				| uint16_t(closeMessage.closeReason) << 8);
+		}
+		closeMessage.operation = WebSocketOp::close;
+		if (receiveClose)
+		{
+			receiveClose(closeMessage);
+		}
+		SendMessage(WebSocketOp::close, result.data(), result.size());
+		isConnectionActive = false;
+	}
 }
 
-void tcp::HttpWebSocket::CloseWithError(std::string error)
+void tcp::HttpWebSocket::CloseWithError(WebSocketCloseReason reason, std::string error)
 {
+	if (reason == WebSocketCloseReason::undefined)
+	{
+		SendMessage(WebSocketOp::close, nullptr, 0);
+		sentClose = true;
+		return;
+	}
+
+	reason = WebSocketCloseReason(uint16_t(reason) >> 8
+		| uint16_t(reason) << 8);
+	error.insert(error.begin(), 2, '\0');
+	memcpy(error.data(), &reason, 2);
+
+	if (error.size() > 123)
+	{
+		throw WebSocketException("WebSockets tried to send a close reason longer than the limit of 123 bytes.");
+	}
+
+	SendMessage(WebSocketOp::close, error.data(), error.size());
+	sentClose = true;
 }

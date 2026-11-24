@@ -8,8 +8,8 @@ int main()
 {
 	try
 	{
-		HttpRequest s = HttpRequest(Url("ws://localhost:7034/ws"), "GET");
-		s.protocol = HttpProtocol::https;
+		HttpRequest s = HttpRequest(Url("ws://localhost:5170/ws"), "GET");
+		s.protocol = HttpProtocol::http;
 		HttpWebSocket socket = HttpWebSocket(&s);
 
 		socket.receiveMessage = [&socket](WebSocketMessage message) {
@@ -17,14 +17,20 @@ int main()
 
 			std::println("{}", messageString);
 
-			messageString += " Websockets!";
+			messageString += " WebSockets!";
 			socket.SendMessage(WebSocketOp::sendText, messageString.data(), messageString.size());
+
+			socket.CloseWithError(WebSocketCloseReason::normalClosure, messageString);
 		};
 
-		socket.ReadConnection();
+		while (socket.IsConnected())
+		{
+			socket.ReadConnection();
+		}
 	}
 	catch (NetworkException& e)
 	{
 		std::println("{}", e.what());
+		return 1;
 	}
 }

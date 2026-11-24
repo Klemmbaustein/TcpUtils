@@ -4,6 +4,10 @@
 
 namespace tcp
 {
+	/**
+	 * @brief
+	 * Base class for every kind of exception that occurred through network operations.
+	 */
 	class NetworkException : std::exception
 	{
 	public:

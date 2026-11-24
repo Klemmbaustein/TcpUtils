@@ -78,12 +78,25 @@ HttpResponse tcp::HttpRequest::Run()
 
 	headers.insert({ "Origin", requestOrigin });
 
+	if (headers.contains("Content-Length"))
+	{
+		headers.erase("Content-Length");
+	}
+
+	if (headers.contains("Transfer-Encoding"))
+	{
+		headers.erase("Transfer-Encoding");
+	}
+
+	bool isChunked = false;
+
 	if (sendBytesFunction && bodySize)
 	{
 		this->headers.insert({ "Content-Length", std::to_string(*bodySize) });
 	}
 	else if (sendBytesFunction && !bodySize)
 	{
+		isChunked = true;
 		this->headers.insert({ "Transfer-Encoding", "chunked" });
 	}
 	else
@@ -92,6 +105,11 @@ HttpResponse tcp::HttpRequest::Run()
 	}
 
 	this->headers.insert({ "Host", url.hostName });
+
+	if (url.path.empty())
+	{
+		throw HttpException("Tried to make a HTTP request to an empty path");
+	}
 
 	sendHeaderPart(std::format("{} {} HTTP/1.1", method, url.path));
 
@@ -104,16 +122,29 @@ HttpResponse tcp::HttpRequest::Run()
 	if (sendBytesFunction)
 	{
 		size_t count = 0;
+		size_t total = 0;
 
 		do
 		{
 			const void* bytes = sendBytesFunction(count);
 
+			if (isChunked)
+			{
+				std::string chunkSize = std::format("{:x}", count) + "\r\n";
+				httpSocket->Send(chunkSize.c_str(), chunkSize.size());
+			}
+
 			if (count)
 			{
 				httpSocket->Send(bytes, count);
 			}
-		} while (count != 0 && (!bodySize || bodySize != count));
+
+			if (isChunked)
+			{
+				httpSocket->Send("\r\n", 2);
+			}
+			total += count;
+		} while (count != 0 && (isChunked || bodySize > total));
 	}
 
 	HttpResponse response;
@@ -183,7 +214,7 @@ HttpResponse tcp::HttpRequest::Run()
 	return response;
 }
 
-HttpResponse tcp::HttpResponse::FromRequest(HttpRequest* request)
+SimpleHttpResponse tcp::SimpleHttpResponse::FromRequest(HttpRequest* request)
 {
 	std::vector<uint8_t> body;
 
@@ -193,14 +224,14 @@ HttpResponse tcp::HttpResponse::FromRequest(HttpRequest* request)
 		memcpy(body.data() + oldSize, bytes, count);
 	};
 
-	auto response = request->Run();
+	SimpleHttpResponse response = request->Run();
 
 	response.body = std::move(body);
 
 	return response;
 }
 
-HttpResponse tcp::HttpResponse::FromRequestWithData(HttpRequest* request, const void* data, size_t dataLength)
+SimpleHttpResponse tcp::SimpleHttpResponse::FromRequestWithData(HttpRequest* request, const void* data, size_t dataLength)
 {
 	request->bodySize = dataLength;
 
@@ -216,7 +247,7 @@ HttpResponse tcp::HttpResponse::FromRequestWithData(HttpRequest* request, const 
 		return data;
 	};
 
-	auto response = request->Run();
+	SimpleHttpResponse response = request->Run();
 
 	response.body = std::move(body);
 
@@ -238,8 +269,10 @@ bool tcp::HttpResponse::ParseRequest(void* bytes, size_t count, const std::funct
 			{
 				return true;
 			}
-			callback(reinterpret_cast<uint8_t*>(bytes) + i, count - i);
-
+			if (callback)
+			{
+				callback(reinterpret_cast<uint8_t*>(bytes) + i, count - i);
+			}
 			this->bodySize -= count - i;
 
 			return this->bodySize == 0;
@@ -258,6 +291,10 @@ bool tcp::HttpResponse::ParseRequest(void* bytes, size_t count, const std::funct
 			currentHeaderChunk.clear();
 			lastWasCr = false;
 			if (stopAfterHeaders && !isParsingHeaders)
+			{
+				return true;
+			}
+			if (!isParsingHeaders && bodySize == 0)
 			{
 				return true;
 			}
