@@ -134,16 +134,20 @@ void tcp::HttpWebSocket::ReadConnection()
 	message.operation = WebSocketOp(headerBytes[0] & 0x0F);
 
 	bool isClose = false;
+	bool isPing = false;
 
 	switch (message.operation)
 	{
 	case WebSocketOp::continueLast:
 	case WebSocketOp::sendText:
 	case WebSocketOp::sendBinary:
+	case WebSocketOp::pong:
 		break;
 	case WebSocketOp::close:
 		isClose = true;
 		break;
+	case WebSocketOp::ping:
+		isPing = true;
 	default:
 		throw WebSocketException("Unknown Websocket message type");
 	}
@@ -184,6 +188,12 @@ void tcp::HttpWebSocket::ReadConnection()
 
 	if (!isClose)
 	{
+		if (isPing)
+		{
+			SendMessage(WebSocketOp::pong, result.data(), result.size());
+			return;
+		}
+
 		if (receiveMessage)
 		{
 			receiveMessage(message);

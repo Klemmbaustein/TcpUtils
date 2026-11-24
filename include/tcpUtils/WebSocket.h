@@ -28,6 +28,10 @@ namespace tcp
 		sendBinary = 2,
 		/// Message is a close request.
 		close = 8,
+		/// Message is a ping message
+		ping = 9,
+		/// Message is a pong message
+		pong = 10,
 	};
 
 	/**
