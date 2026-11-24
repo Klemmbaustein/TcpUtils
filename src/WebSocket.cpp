@@ -126,28 +126,33 @@ void tcp::HttpWebSocket::ReadConnection()
 {
 	uint8_t headerBytes[2]{ 0 };
 
-	if (!connection->Receive(headerBytes, sizeof(headerBytes)))
+	if (!connection->ReceiveCount(headerBytes, sizeof(headerBytes)))
 	{
 		throw WebSocketException("Connection closed without a closing handshake");
 	}
 	WebSocketMessage message;
 	message.operation = WebSocketOp(headerBytes[0] & 0x0F);
+	message.isLastChunk = (headerBytes[0] >> 7) & 1;
 
 	bool isClose = false;
 	bool isPing = false;
+	bool isPong = false;
 
 	switch (message.operation)
 	{
 	case WebSocketOp::continueLast:
 	case WebSocketOp::sendText:
 	case WebSocketOp::sendBinary:
+		break;
 	case WebSocketOp::pong:
+		isPong = true;
 		break;
 	case WebSocketOp::close:
 		isClose = true;
 		break;
 	case WebSocketOp::ping:
 		isPing = true;
+		break;
 	default:
 		throw WebSocketException("Unknown Websocket message type");
 	}
@@ -162,13 +167,13 @@ void tcp::HttpWebSocket::ReadConnection()
 	if (byteSize == 126)
 	{
 		uint8_t sizeBytes[2];
-		connection->Receive(sizeBytes, sizeof(sizeBytes));
+		connection->ReceiveCount(sizeBytes, sizeof(sizeBytes));
 		totalSize = sizeBytes[0] << 8 | sizeBytes[1];
 	}
 	else if (byteSize == 127)
 	{
 		uint8_t sizeBytes[8];
-		connection->Receive(sizeBytes, sizeof(sizeBytes));
+		connection->ReceiveCount(sizeBytes, sizeof(sizeBytes));
 		totalSize = 0;
 		totalSize |= static_cast<int64_t>(sizeBytes[0]) << 56;
 		totalSize |= static_cast<int64_t>(sizeBytes[1]) << 48;
@@ -182,8 +187,11 @@ void tcp::HttpWebSocket::ReadConnection()
 
 	std::string result;
 	result.resize(totalSize);
-	connection->Receive(result.data(), result.size());
-	message.payload = result.data();
+	if (totalSize != 0)
+	{
+		connection->ReceiveCount(result.data(), result.size());
+		message.payload = result.data();
+	}
 	message.payloadLength = result.size();
 
 	if (!isClose)
@@ -191,6 +199,10 @@ void tcp::HttpWebSocket::ReadConnection()
 		if (isPing)
 		{
 			SendMessage(WebSocketOp::pong, result.data(), result.size());
+			return;
+		}
+		if (isPong)
+		{
 			return;
 		}
 

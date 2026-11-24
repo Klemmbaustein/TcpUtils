@@ -82,8 +82,7 @@ namespace tcp
 		 * @param toData
 		 * The buffer to write the new data to.
 		 * @param dataLength
-		 * The length in bytes of the buffer the data is written to. The function will write this many bytes to this buffer,
-		 * or less if the server sent less bytes.
+		 * The length in bytes of the buffer the data is written to.
 		 * @return
 		 * The number of bytes actually read.
 		 *
@@ -91,6 +90,21 @@ namespace tcp
 		 * Exceptions are thrown if an error occurs while attempting to send data.
 		 */
 		size_t Receive(void* toData, size_t dataLength);
+		/**
+		 * @brief
+		 * Receives exactly dataLength number of bytes data over the socket.
+		 *
+		 * @param toData
+		 * The buffer to write the new data to.
+		 * @param dataLength
+		 * The length in bytes of the buffer the data is written to.
+		 * @return
+		 * True if reading this many bytes succeeded.
+		 *
+		 * @throw SocketException
+		 * Exceptions are thrown if an error occurs while attempting to send data.
+		 */
+		bool ReceiveCount(void* toData, size_t dataLength);
 
 	private:
 		impl::SocketImpl* implementation = nullptr;

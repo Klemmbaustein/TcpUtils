@@ -76,6 +76,7 @@ namespace tcp
 		 * The length of the payload, in bytes.
 		 */
 		size_t payloadLength = 0;
+		bool isLastChunk = true;
 	};
 
 	/**
