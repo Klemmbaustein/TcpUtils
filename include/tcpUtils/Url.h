@@ -8,7 +8,7 @@ namespace tcp
 	class Url
 	{
 	public:
-		Url(std::string FromString);
+		Url(std::string fromString);
 		Url();
 
 		std::string hostName;

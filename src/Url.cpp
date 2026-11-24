@@ -1,7 +1,7 @@
 #include <tcpUtils/Url.h>
 #include <vector>
 
-tcp::Url::Url(std::string FromString)
+tcp::Url::Url(std::string fromString)
 {
 	const std::vector<std::string> possibleSchemes = { SCHEME_HTTP, SCHEME_HTTPS,
 		SCHEME_WEBSOCKET, SCHEME_SECURE_WEBSOCKET };
@@ -9,10 +9,10 @@ tcp::Url::Url(std::string FromString)
 
 	for (auto& i : possibleSchemes)
 	{
-		if (FromString.substr(0, i.size()) == i)
+		if (fromString.substr(0, i.size()) == i)
 		{
 			urlType = i;
-			FromString = FromString.substr(i.size());
+			fromString = fromString.substr(i.size());
 			break;
 		}
 	}
@@ -22,25 +22,25 @@ tcp::Url::Url(std::string FromString)
 		urlType = SCHEME_HTTP;
 	}
 
-	size_t slash = FromString.find_first_of("/");
+	size_t slash = fromString.find_first_of("/");
 	if (slash != std::string::npos)
 	{
-		this->path = FromString.substr(slash);
-		FromString = FromString.substr(0, slash);
+		this->path = fromString.substr(slash);
+		fromString = fromString.substr(0, slash);
 	}
 	else
 	{
 		this->path = "/";
 	}
 
-	size_t Colon = FromString.find_first_of(":");
+	size_t Colon = fromString.find_first_of(":");
 	if (Colon != std::string::npos)
 	{
-		this->port = std::stoi(FromString.substr(Colon + 1));
-		FromString = FromString.substr(0, Colon);
+		this->port = std::stoi(fromString.substr(Colon + 1));
+		fromString = fromString.substr(0, Colon);
 	}
 	this->scheme = urlType;
-	this->hostName = FromString;
+	this->hostName = fromString;
 }
 
 tcp::Url::Url()
