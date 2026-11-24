@@ -25,6 +25,4 @@ if(UNIX)
 	find_package(OpenSSL REQUIRED)
 
 	target_link_libraries(TcpUtils PRIVATE OpenSSL::SSL)
-	target_compile_options(TcpUtils PUBLIC -fsanitize=address)
-	target_link_options(TcpUtils PUBLIC -fsanitize=address)
 endif()
